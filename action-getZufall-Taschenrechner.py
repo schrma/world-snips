@@ -10,9 +10,9 @@ def action_wrapper(hermes, intent_message):
     if item == 'coin' or item == 'kopf ' or item == 'münze ':
         coin_random = random.randrange(0, 1)
         if coin_random == 0:
-            result_sentence = "Es ist ein Kopf."
+            result_sentence = "Es ist ein Kopf, super."
         else:
-            result_sentence = "Es ist eine Zahl."
+            result_sentence = "Es ist eine Zahl, super."
     elif item == 'dice' or item == 'würfel ':
         dice_random = random.randrange(1, 6)
         result_sentence = "Ich habe eine {number} gewürfelt.".format(number=dice_random)

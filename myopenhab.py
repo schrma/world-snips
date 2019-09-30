@@ -44,7 +44,7 @@ def getJSONValue(obj, path):
 	v = ""
 	try:
 		for k in path:
-			if(isinstance(k, basestring)):
+			if(isinstance(k, str)):
 				if(str(k) in subObj):
 					subObj = subObj[k]
 					v = subObj

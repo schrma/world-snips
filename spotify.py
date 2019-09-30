@@ -1,9 +1,7 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
+#
+# Use the Spotify Web Connect API using credentials auth code and tokens.
+#
 
-from hermes_python.hermes import Hermes
-import random
-import os
 import json
 import requests
 import time
@@ -12,6 +10,13 @@ import sys
 from myopenhab import openhab
 from myopenhab import mapValues
 from myopenhab import getJSONValue
+
+
+#   API Gateway
+ACCOUNT_URL = 'https://accounts.spotify.com/api/token'
+API_ROOT_URL = 'https://api.spotify.com/v1/me/player/'
+REDIRECT_URI = 'http://10.0.5.129:8080/static/spotify-auth.html'
+VOL_INCREMENT = 10
 
 class spotify(object):
     """
@@ -28,9 +33,6 @@ class spotify(object):
 
         self.client_id = self.oh.getState('spotify_client_id')
         self.client_secret = self.oh.getState('spotify_client_secret')
-        print(self.client_id)
-        print(self.client_secret)
-
         self.access_token = self.oh.getState('spotify_access_token')
         self.refresh_token = self.oh.getState('spotify_refresh_token')
         self.token_issued = self.oh.getState('spotify_token_issued')
@@ -52,13 +54,10 @@ class spotify(object):
         #   Send OAuth payload to get access_token
         payload = { 'code':self.oh.getState('spotify_auth_code'), 'client_id':self.client_id, 'client_secret':self.client_secret, 'redirect_uri':REDIRECT_URI, 'grant_type':'authorization_code' }
         
-        print("-- Calling Token Service for the first time")
 
         try:
             r = requests.post(ACCOUNT_URL, data=payload, allow_redirects=False)
 
-            if (self.debug): print(r.headers)
-            if (self.debug): print(r.json())
             resp = r.json()
 
             if(r.status_code == 200):
@@ -74,7 +73,7 @@ class spotify(object):
                 self.saveCredentials()
 
         except:
-            print(" -> Error getting token:" + str(sys.exc_info()[1]))
+            pass
 
     def refreshCredentials(self):
         """
@@ -84,13 +83,10 @@ class spotify(object):
         #   Send OAuth payload to get access_token
         payload = { 'refresh_token':self.refresh_token, 'client_id':self.client_id, 'client_secret':self.client_secret, 'redirect_uri':REDIRECT_URI, 'grant_type':'refresh_token' }
         
-        print("-- Calling Token Refresh Service")
 
         try:
             r = requests.post(ACCOUNT_URL, data=payload, allow_redirects=False)
 
-            if (self.debug): print(r.headers)
-            if (self.debug): print(r.json())
             resp = r.json()
 
             if(r.status_code == 200):
@@ -107,7 +103,7 @@ class spotify(object):
                 self.saveCredentials()
 
         except:
-            print(" -> Error refreshing token:" + str(sys.exc_info()[1]))
+            pass
 
     def saveCredentials(self):
         """
@@ -124,40 +120,29 @@ class spotify(object):
         Call the API at the given path.
         """
         
-        if (time.time() > self.token_expiry):
+        if (time.time() > float(self.token_expiry)):
             self.refreshCredentials()
         headers = {"Authorization": "Bearer " + self.access_token, "Content-Type": "application/json" }
         if mode == "POST":
-            print("1---------- Post")
             r = requests.post(API_ROOT_URL + path,  headers=headers, data=payload)
             if(r.status_code < 200 and r.status_code > 299):
-                print("Response Code = " + str(r.status_code))
-                print(r.content)
+                pass
             return r.status_code
         elif mode == "PUT":
-            print("2---------- put")
             r = requests.put(API_ROOT_URL + path,  headers=headers, data=payload)
             if(r.status_code < 200 and r.status_code > 299):
-                print("Response Code = " + str(r.status_code))
-                print(r.content)
+                pass
             return r.status_code
         else:
-            print("3---------- else ")
             r = requests.get(API_ROOT_URL + path,  headers=headers)
-            if(r.status_code < 200 and r.status_code > 299):
-                print("Response Code = " + str(r.status_code))
-                print(r.content)
-            print(r.json())
             return r.json()
 
     def update(self):
         """
         Get a current player state.
         """
-        print("-- Calling Service: Update")
         try:
             resp = self.call("")
-            if (self.debug): print(resp)
             if ('item' in resp):
 
                 self.oh.sendCommand('spotify_current_track', getJSONValue(resp, ['item','name']))
@@ -180,11 +165,9 @@ class spotify(object):
 
                 self.oh.sendCommand('spotify_current_progress_percent', progress_percent)
 
-                print(" -> Success")
             else:
-                print(" -> Item node missing from response :(")
+                pass
         except:
-            print(" -> Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp
@@ -193,14 +176,11 @@ class spotify(object):
         """
         Get List of Devices
         """
-        print("-- Calling Service: Get Devices")
         try:
             resp = self.call("devices")
             resp = json.dumps(resp["devices"])
             self.oh.sendCommand('spotify_device_list',resp)
-            if (self.debug): print(resp)
         except:
-            print(" -> Device List Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp
@@ -209,19 +189,15 @@ class spotify(object):
         """
         Transfer Playback from one device to another
         """
-        print("-- Calling Service: Transfer Playback")
 
         deviceID = self.oh.getState('spotify_current_device_id')
 
         payload = json.dumps({ 'device_ids': [ deviceID ] })
-        print(payload)
 
         try:
             resp = self.call("","PUT", payload = payload)
-            if (self.debug): print(resp)
             self.update()  
         except:
-            print(" -> Transfer Playback Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp    
@@ -230,18 +206,14 @@ class spotify(object):
         """
         Volume up by 10%
         """
-        print("-- Calling Service: Volume Up")
         try:
             vol = int(self.oh.getState('spotify_current_volume'))
             vol = int(round(vol/10)*10 + VOL_INCREMENT)
             if(vol>100): 
                 vol = 100
-            print(" -> Volume To:" + str(vol))
             resp = self.call("volume?volume_percent=" + str(vol),"PUT" )
             self.oh.sendCommand('spotify_current_volume',vol)
-            if (self.debug): print(resp)
         except:
-            print(" -> VolumeUp Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp
@@ -250,18 +222,14 @@ class spotify(object):
         """
         Volume down by 10%
         """
-        print("-- Calling Service: Volume Down")
         try:
             vol = int(self.oh.getState('spotify_current_volume'))
             vol = int(round(vol/10)*10 - VOL_INCREMENT)
             if(vol<0): 
                 vol = 0
-            print("Volume To:" + str(vol))
             resp = self.call("volume?volume_percent=" + str(vol),"PUT" )
             self.oh.sendCommand('spotify_current_volume',vol)
-            if (self.debug): print(resp)
         except:
-            print(" -> VolumeDown Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp
@@ -270,13 +238,10 @@ class spotify(object):
         """
         Pause player
         """
-        print("-- Calling Service: Pause")
         try:
             resp = self.call("pause","PUT")
             self.oh.sendCommand('spotify_current_playing',"OFF")
-            if (self.debug): print(resp)
         except:
-            print(" -> Pause Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp    
@@ -285,7 +250,6 @@ class spotify(object):
         """
         Resume player
         """
-        print("-- Calling Service: Play")
 
         deviceID = self.oh.getState('spotify_current_device_id')
         if (deviceID == ''):
@@ -300,10 +264,8 @@ class spotify(object):
 
         try:
             resp = self.call(command,"PUT", payload = payload)
-            if (self.debug): print(resp)
             self.update()  
         except:
-            print(" -> Play Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp        
@@ -312,13 +274,10 @@ class spotify(object):
         """
         Skip to previous track
         """
-        print("-- Calling Service: Previous")
         try:
             resp = self.call("previous","POST")
-            if (self.debug): print(resp)
             self.update()  
         except:
-            print(" -> Previous Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp        
@@ -327,13 +286,10 @@ class spotify(object):
         """
         Skip to next track
         """
-        print("-- Calling Service: Next")
         try:
             resp = self.call("next","POST")
-            if (self.debug): print(resp)
             self.update()
         except:
-            print(" -> Next Failure: ", sys.exc_info()[0])
             resp = ""
 
         return resp
@@ -341,33 +297,44 @@ class spotify(object):
     def updateConnectionDateTime(self):
         self.oh.sendCommand('spotify_lastConnectionDateTime',time.strftime("%Y-%m-%dT%H:%M:%S+0000",time.gmtime(time.time())))     
 
-def action_wrapper(hermes, intent_message):
-    os.system("date")
-    print("Go message")
+def main():
+
+    t1 = time.time()
+
     c = spotify()
-    item = intent_message.slots.item_random.first().value
-    if item == 'coin' or item == 'kopf ' or item == 'münze ':
-        coin_random = random.randrange(0, 1)
-        if coin_random == 0:
-            c.next()
-            result_sentence = "Nächstes Lied"
-        else:
-            c.previous()
-            result_sentence = "Lied vorher"
-    elif item == 'dice' or item == 'würfel ':
-        dice_random = random.randrange(1, 6)
-        result_sentence = "Ich habe eine {number} gewürfelt.".format(number=dice_random)
-    elif item == 'number' or item == 'zahl ':
-        number_random = random.randrange(0, 1000)
-        result_sentence = "Die {number} habe ich gerade zufällig gewählt.".format(number=number_random)
-    # TODO: random number from range
+
+    args = sys.argv
+    
+    if(len(args) == 1):
+        c.update()
     else:
-        result_sentence = "Diese Funktion ist noch nicht verfügbar."
-    current_session_id = intent_message.session_id
-    hermes.publish_end_session(current_session_id, result_sentence)
 
+        if(args[1] == "get_devices"):
+            c.getDevices()
+        if(args[1] == "transfer_playback"):
+            c.transferPlayback()
+        if(args[1] == "volume_up"):
+            c.volumeUp()
+        if(args[1] == "volume_down"):
+            c.volumeDown()
+        if(args[1] == "play"):
+            if(len(args)>2):
+                a = ""
+                for x in range(2, len(args)):
+                    a = a + args[x] + " "
+                c.play(a.strip())
+            else:
+                c.play()
+        if(args[1] == "pause"):
+            c.pause()
+        if(args[1] == "previous"):
+            c.previous()
+        if(args[1] == "next"):
+            c.next()
 
-if __name__ == "__main__":
-    print("Start")
-    with Hermes("localhost:1883") as h:
-        h.subscribe_intent("domi:getZufall", action_wrapper).start()
+    c.updateConnectionDateTime()
+
+    t2 = time.time()
+
+if __name__ == '__main__':
+    main()
